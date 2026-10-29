@@ -1,132 +1,145 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Nuvve — Blog API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API de blog em **NestJS 12 + TypeORM + PostgreSQL**: autores, posts (rascunho/publicado),
+categorias, tags, busca pública e autenticação JWT.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+O frontend Angular vive em `../client` e ainda não consome esta API.
 
-## Description
+## Requisitos
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- Node.js 22+
+- PostgreSQL 16 (ou Docker)
 
-## Project setup
+## Setup
 
 ```bash
-$ npm install
+npm ci
+cp .env.example .env        # ajuste JWT_SECRET e credenciais
+docker compose up -d db     # ou use um Postgres já existente
+npm run migration:run
+npm run seed
+npm run start:dev
 ```
 
-## Compile and run the project
+A API sobe em `http://localhost:3000/api`. Login criado pelo seed: `SEED_EMAIL` /
+`SEED_PASSWORD` do `.env` (padrão `author@nuvve.dev` / `change-me-123`).
+
+> Bancos criados antes das migrations (com `synchronize: true`) precisam ser recriados:
+> `docker compose down -v && docker compose up -d db && npm run migration:run && npm run seed`.
+> As migrations são a fonte da verdade — `DB_SYNCHRONIZE` fica `false` em todos os ambientes.
+
+## Scripts
+
+| Comando | O que faz |
+|---|---|
+| `npm run start:dev` | API em watch mode |
+| `npm run build` / `start:prod` | build e execução do `dist` |
+| `npm test` | testes unitários (Jest) |
+| `npm run test:e2e` | testes de API contra `nuvve_test` |
+| `npm run test:cov` | cobertura |
+| `npm run lint` | oxlint (type-aware) |
+| `npm run migration:generate -- src/shared/db/migrations/Nome` | gera migration a partir das entidades |
+| `npm run migration:run` / `migration:revert` | aplica/desfaz migrations |
+| `npm run seed` / `seed:prod` | popula banco (dev / `dist`) |
+
+### Testes e2e
+
+Os testes esperam um Postgres acessível com o banco `nuvve_test` já criado
+(`CREATE DATABASE nuvve_test;`). As migrations rodam automaticamente no `beforeAll`.
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+docker exec -it <container-do-postgres> createdb -U root nuvve_test
+npm run test:e2e
 ```
 
-## Run tests
+## Variáveis de ambiente
+
+Todas em `.env.example`. Destaques:
+
+- `JWT_SECRET` (obrigatório em produção) e `JWT_EXPIRES_IN`
+- `DB_*` e `DB_SYNCHRONIZE` (sempre `false`)
+- `CORS_ORIGIN` (lista separada por vírgula)
+- `SEED_EMAIL`, `SEED_PASSWORD`, `SEED_NAME`
+
+## Endpoints
+
+Prefixo global: `/api`. Rotas de escrita exigem `Authorization: Bearer <token>`;
+as marcadas como **públicas** não exigem.
+
+### Auth
+
+| Método | Rota | Acesso | Descrição |
+|---|---|---|---|
+| POST | `/auth/register` | público | cria usuário + perfil de autor, retorna JWT |
+| POST | `/auth/login` | público | retorna JWT |
+| GET | `/auth/me` | privado | perfil do autor autenticado |
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+curl -s localhost:3000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"author@nuvve.dev","password":"change-me-123"}'
 ```
 
-## Deployment
+### Posts do autor (CMS)
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/creator/posts` | lista os posts do autor (rascunhos incluídos) |
+| POST | `/creator/posts` | cria post (`status: draft \| published`) |
+| PUT | `/creator/posts/:id` | atualiza (somente o próprio autor) |
+| DELETE | `/creator/posts/:id` | remove (somente o próprio autor) |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Leitura pública
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/read` | posts publicados, paginados |
+| GET | `/read/:slug` | detalhe por slug |
+| GET | `/health` | status do processo e do banco |
+
+Query params de `/read`: `page` (1), `limit` (1–50, padrão 10), `search`,
+`category` (slug), `tag` (slug). Resposta:
+
+```json
+{
+  "data": [{ "id": "...", "title": "...", "author": { "id": "...", "name": "..." } }],
+  "meta": { "page": 1, "limit": 10, "total": 1, "totalPages": 1 }
+}
+```
+
+### Taxonomia
+
+| Método | Rota | Acesso |
+|---|---|---|
+| GET | `/categories`, `/categories/:id` | público |
+| POST/PUT/DELETE | `/categories`, `/categories/:id` | privado |
+| GET | `/tags`, `/tags/:id` | público |
+| POST/PUT/DELETE | `/tags`, `/tags/:id` | privado |
+
+## Estrutura
+
+```
+src/
+  core/            guards, decorators, filters, security (scrypt) e health
+  features/        auth, category, tag, post/creator, post/reader
+  shared/          config, entities, data source, migrations, seed, enums
+  app.module.ts    ConfigModule + TypeORM + Core + Features
+  app.setup.ts     prefixo /api, ValidationPipe, serialização, CORS, filtro
+test/              e2e (Postgres real)
+```
+
+Regras importantes:
+
+- Erros de validação retornam 400 com a lista de mensagens; conflitos de slug/e-mail, 409.
+- Senhas usam `scrypt` (`node:crypto`) e nunca são serializadas.
+- `Author.userId` é excluído das respostas.
+- Toda rota é privada por padrão; `@Public()` libera as rotas de leitura.
+
+## Docker
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker compose up --build
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-To add it to this project, run this and approve the code it prints at [observe.nestjs.com/link](https://observe.nestjs.com/link) - signing up for free if you have no account:
-
-```bash
-$ npx @nestjs/observe link
-```
-
-It installs `@nestjs/observe`, wires it into `AppModule` and `main.ts`, and writes the app key and secret into `.env`, which every `nest start` script (`start`, `start:dev`, `start:debug`) then loads. In production, set `OBSERVE_APP_KEY` and `OBSERVE_APP_SECRET` in the environment instead.
-
-Or do it by hand:
-
-```bash
-$ npm install @nestjs/observe
-```
-
-Then follow the [setup guide](https://docs.nestjs.com/observability/sdk) - it takes a single import and an app key.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Sobe `db` (Postgres 16) + `api` (migrations aplicadas no entrypoint). Em produção,
+defina `NODE_ENV=production` e um `JWT_SECRET` real fora do repositório.

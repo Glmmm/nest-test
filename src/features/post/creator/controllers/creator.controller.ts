@@ -1,43 +1,52 @@
 import {
-  Controller,
-  Post,
   Body,
-  Param,
-  Put,
+  Controller,
   Delete,
-  UseGuards,
-  Req,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
 } from '@nestjs/common';
+import { CurrentUser } from '../../../../core/decorators/current-user.decorator';
+import { CreatePostDTO } from '../dtos/create-post.dto';
+import { UpdatePostDTO } from '../dtos/update-post.dto';
 import { CreatorService } from '../services/creator.service';
-import { JWTGuard } from '../../../../core/guards/jwt.guard';
-import { CreatePostDto } from '../dtos/create-post.dto';
 
-@Controller('creator')
+@Controller('creator/posts')
 export class CreatorController {
   constructor(private readonly creatorService: CreatorService) {}
 
-  @UseGuards(JWTGuard)
+  @Get()
+  findMine(@CurrentUser('authorId') authorId: string) {
+    return this.creatorService.findMine(authorId);
+  }
+
   @Post()
-  create(@Req() req: any, @Body() dto: CreatePostDto) {
-    const authorId = req.user.authorId;
+  create(
+    @CurrentUser('authorId') authorId: string,
+    @Body() dto: CreatePostDTO,
+  ) {
     return this.creatorService.create(authorId, dto);
   }
 
-  @UseGuards(JWTGuard)
   @Put(':id')
   update(
-    @Req() req: any,
-    @Param('id') id: string,
-    @Body() dto: Partial<CreatePostDto>,
+    @CurrentUser('authorId') authorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePostDTO,
   ) {
-    const authorId = req.user.authorId;
     return this.creatorService.update(id, authorId, dto);
   }
 
-  @UseGuards(JWTGuard)
   @Delete(':id')
-  remove(@Req() req: any, @Param('id') id: string) {
-    const authorId = req.user.authorId;
-    return this.creatorService.remove(id, authorId);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(
+    @CurrentUser('authorId') authorId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    await this.creatorService.remove(id, authorId);
   }
 }

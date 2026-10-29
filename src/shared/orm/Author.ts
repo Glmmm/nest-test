@@ -1,8 +1,9 @@
+import { Exclude } from 'class-transformer';
+import type { Relation } from 'typeorm';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
   OneToMany,
   JoinColumn,
   OneToOne,
@@ -15,19 +16,20 @@ export class Author {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Exclude()
   @Column({ type: 'uuid', name: 'user_id' })
   userId: string;
 
   @OneToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user: Relation<User>;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 120 })
   name: string;
 
   @Column({ type: 'text', nullable: true })
-  bio: string;
+  bio: string | null;
 
   @OneToMany(() => Post, (post) => post.author)
-  posts: Post[];
+  posts: Relation<Post>[];
 }

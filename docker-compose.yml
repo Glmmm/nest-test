@@ -1,8 +1,6 @@
-version: "3.8"
-
 services:
   db:
-    image: postgres:13-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     env_file:
       - .env
@@ -11,10 +9,10 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   api:
     build:
@@ -23,12 +21,17 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      # Inside the compose network the database is reachable as `db`,
+      # regardless of what DB_HOST says in .env.
+      DB_HOST: db
+      DB_SYNCHRONIZE: "false"
     depends_on:
       db:
         condition: service_healthy
     env_file:
       - .env
-    command: sh -c "npm run migration:run && node dist/main.js"
+    command: sh -c "npm run migration:run:prod && node dist/main.js"
 
 volumes:
   db-data:

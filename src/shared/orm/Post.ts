@@ -1,3 +1,4 @@
+import type { Relation } from 'typeorm';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -22,24 +23,27 @@ export class Post {
   @Column({ type: 'uuid', name: 'author_id' })
   authorId: string;
 
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  excerpt: string | null;
+
   @ManyToOne(() => Author, (author) => author.posts, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'author_id' })
-  author: Author;
+  author: Relation<Author>;
 
   @Column({ type: 'uuid', name: 'category_id', nullable: true })
-  categoryId: string;
+  categoryId: string | null;
 
   @ManyToOne(() => Category, (category) => category.posts, {
     nullable: true,
     onDelete: 'SET NULL',
   })
   @JoinColumn({ name: 'category_id' })
-  category: Category;
+  category: Relation<Category | null>;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 200 })
   title: string;
 
-  @Column({ type: 'varchar', unique: true })
+  @Column({ type: 'varchar', length: 220, unique: true })
   slug: string;
 
   @Column({ type: 'text' })
@@ -48,8 +52,12 @@ export class Post {
   @Column({ type: 'enum', enum: POST_STATUS, default: POST_STATUS.DRAFT })
   status: POST_STATUS;
 
-  @Column({ type: 'timestamp', nullable: true, name: 'published_at' })
-  publishedAt: Date;
+  @Column({
+    type: 'timestamptz',
+    nullable: true,
+    name: 'published_at',
+  })
+  publishedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -63,5 +71,5 @@ export class Post {
     joinColumn: { name: 'post_id', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'tag_id', referencedColumnName: 'id' },
   })
-  tags: Tag[];
+  tags: Relation<Tag>[];
 }

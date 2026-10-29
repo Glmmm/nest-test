@@ -1,45 +1,52 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Param,
-  Put,
+  Controller,
   Delete,
-  UseGuards,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
 } from '@nestjs/common';
+import { Public } from '../../../core/decorators/public.decorator';
+import { CreateCategoryDTO } from '../dtos/create-category.dto';
+import { UpdateCategoryDTO } from '../dtos/update-category.dto';
 import { CategoriesService } from '../services/category.service';
-import { JWTGuard } from '../../../core/guards/jwt.guard';
 
 @Controller('categories')
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
+  @Public()
   @Get()
   findAll() {
     return this.categoriesService.findAll();
   }
 
+  @Public()
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.categoriesService.findOne(id);
   }
 
-  @UseGuards(JWTGuard)
   @Post()
-  create(@Body() body: any) {
-    return this.categoriesService.create(body);
+  create(@Body() dto: CreateCategoryDTO) {
+    return this.categoriesService.create(dto);
   }
 
-  @UseGuards(JWTGuard)
   @Put(':id')
-  update(@Param('id') id: string, @Body() body: any) {
-    return this.categoriesService.update(id, body);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCategoryDTO,
+  ) {
+    return this.categoriesService.update(id, dto);
   }
 
-  @UseGuards(JWTGuard)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.categoriesService.remove(id);
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    await this.categoriesService.remove(id);
   }
 }

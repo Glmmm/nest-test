@@ -1,56 +1,129 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { Tag } from '../../../../shared/orm/Tag';
-import { Post } from '../../../../shared/orm/Post';
-import { CreatePostDto } from '../dtos/create-post.dto';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { isUniqueViolation } from '../../../../shared/db/errors';
 import { POST_STATUS } from '../../../../shared/enums/post-status.enum';
+import { Category } from '../../../../shared/orm/Category';
+import { Post } from '../../../../shared/orm/Post';
+import { Tag } from '../../../../shared/orm/Tag';
+import { CreatePostDTO } from '../dtos/create-post.dto';
+import { UpdatePostDTO } from '../dtos/update-post.dto';
 
 @Injectable()
 export class CreatorService {
   constructor(
-    @InjectRepository(Post) private postRepository: Repository<Post>,
-    @InjectRepository(Tag) private tagRepository: Repository<Tag>,
+    @InjectRepository(Post) private readonly postRepository: Repository<Post>,
+    private readonly dataSource: DataSource,
   ) {}
 
-  async create(authorId: string, dto: CreatePostDto) {
-    const tags = dto.tagIds
-      ? await this.tagRepository.findBy({ id: In(dto.tagIds) })
-      : [];
-
-    let post = this.postRepository.create({
-      ...dto,
-      authorId,
-      tags,
-      publishedAt:
-        dto.status === POST_STATUS.PUBLISHED ? new Date() : undefined,
+  findMine(authorId: string): Promise<Post[]> {
+    return this.postRepository.find({
+      where: { authorId },
+      relations: { category: true, tags: true },
+      order: { createdAt: 'DESC' },
     });
-
-    return this.postRepository.save(post);
   }
 
-  async update(id: string, authorId: string, dto: Partial<CreatePostDto>) {
-    const post = await this.postRepository.findOne({ where: { id, authorId } });
-    if (!post) throw new NotFoundException('Post not found or unauthorized');
+  async create(authorId: string, dto: CreatePostDTO): Promise<Post> {
+    return this.dataSource
+      .transaction(async (manager) => {
+        await this.assertCategoryExists(manager, dto.categoryId);
+        const tags = await this.resolveTags(manager, dto.tagIds);
+        const { tagIds: _tagIds, ...fields } = dto;
 
-    if (dto.tagIds) {
-      post.tags = await this.tagRepository.findBy({ id: In(dto.tagIds) });
-    }
+        const post = manager.create(Post, {
+          ...fields,
+          categoryId: fields.categoryId ?? null,
+          authorId,
+          tags,
+          publishedAt:
+            dto.status === POST_STATUS.PUBLISHED ? new Date() : null,
+        });
 
-    if (
-      dto.status === POST_STATUS.PUBLISHED &&
-      post.status !== POST_STATUS.PUBLISHED
-    ) {
-      post.publishedAt = new Date();
-    }
-
-    Object.assign(post, dto);
-    return this.postRepository.save(post);
+        return manager.save(post);
+      })
+      .catch((error) => {
+        if (isUniqueViolation(error)) {
+          throw new ConflictException('Já existe um post com este slug.');
+        }
+        throw error;
+      });
   }
 
-  async remove(id: string, authorId: string) {
+  async update(
+    id: string,
+    authorId: string,
+    dto: UpdatePostDTO,
+  ): Promise<Post> {
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const post = await manager.findOne(Post, {
+          where: { id, authorId },
+          relations: { tags: true },
+        });
+        if (!post) {
+          throw new NotFoundException('Post não encontrado ou sem permissão.');
+        }
+
+        await this.assertCategoryExists(manager, dto.categoryId);
+        if (dto.tagIds) {
+          post.tags = await this.resolveTags(manager, dto.tagIds);
+        }
+
+        const { tagIds: _tagIds, ...fields } = dto;
+        const previousStatus = post.status;
+        Object.assign(post, fields);
+
+        if (dto.status && dto.status !== previousStatus) {
+          post.publishedAt =
+            dto.status === POST_STATUS.PUBLISHED ? new Date() : null;
+        }
+
+        return manager.save(post);
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('Já existe um post com este slug.');
+      }
+      throw error;
+    }
+  }
+
+  async remove(id: string, authorId: string): Promise<void> {
     const post = await this.postRepository.findOne({ where: { id, authorId } });
-    if (!post) throw new NotFoundException('Post not found or unauthorized');
-    return this.postRepository.remove(post);
+    if (!post) {
+      throw new NotFoundException('Post não encontrado ou sem permissão.');
+    }
+    await this.postRepository.remove(post);
+  }
+
+  private async resolveTags(
+    manager: EntityManager,
+    tagIds?: string[],
+  ): Promise<Tag[]> {
+    if (!tagIds?.length) return [];
+
+    const tags = await manager.findBy(Tag, { id: In(tagIds) });
+    if (tags.length !== tagIds.length) {
+      throw new BadRequestException('Uma ou mais tags informadas não existem.');
+    }
+    return tags;
+  }
+
+  private async assertCategoryExists(
+    manager: EntityManager,
+    categoryId?: string,
+  ): Promise<void> {
+    if (!categoryId) return;
+
+    const exists = await manager.existsBy(Category, { id: categoryId });
+    if (!exists) {
+      throw new BadRequestException('A categoria informada não existe.');
+    }
   }
 }
